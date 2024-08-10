@@ -20,7 +20,7 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
-use crate::append::rolling_file::clock::{Clock, DefaultClock, StateClock};
+use crate::append::rolling_file::clock::{DefaultClock, StateClock};
 use crate::append::rolling_file::TimeRotation;
 use anyhow::Context;
 use parking_lot::RwLock;
@@ -137,6 +137,7 @@ impl RollingFileWriterBuilder {
         self
     }
 
+    #[cfg(test)]
     fn clock(mut self, clock: StateClock) -> Self {
         self.clock = Some(clock);
         self
@@ -159,7 +160,7 @@ impl RollingFileWriterBuilder {
             suffix,
             max_size,
             max_files,
-            clock.unwrap_or_else(|| StateClock::DefaultClock(DefaultClock)),
+            clock.unwrap_or(StateClock::DefaultClock(DefaultClock)),
         )?;
         Ok(RollingFileWriter { state, writer })
     }
@@ -423,7 +424,6 @@ mod tests {
     ) {
         let temp_dir = TempDir::new().expect("failed to create a temporary directory");
         let max_files = 10;
-        let max_size = 1000000;
 
         let start_time = datetime!(2024-08-10 00:00:00 +0);
         let mut writer = RollingFileWriterBuilder::new()
@@ -432,9 +432,7 @@ mod tests {
             .filename_suffix("log")
             .max_log_files(max_files)
             .max_file_size(usize::MAX)
-            .clock(StateClock::ManualClock(ManualClock::new(
-                start_time.clone(),
-            )))
+            .clock(StateClock::ManualClock(ManualClock::new(start_time)))
             .build(&temp_dir)
             .unwrap();
 

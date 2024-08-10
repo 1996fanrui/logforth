@@ -31,16 +31,19 @@ impl Clock for DefaultClock {
 
 /// The time could be reset.
 #[derive(Debug)]
+#[cfg(test)]
 pub struct ManualClock {
     fixed_time: OffsetDateTime,
 }
 
+#[cfg(test)]
 impl Clock for ManualClock {
     fn now(&self) -> OffsetDateTime {
         self.fixed_time
     }
 }
 
+#[cfg(test)]
 impl ManualClock {
     pub fn new(fixed_time: OffsetDateTime) -> ManualClock {
         ManualClock { fixed_time }
@@ -54,6 +57,7 @@ impl ManualClock {
 #[derive(Debug)]
 pub enum StateClock {
     DefaultClock(DefaultClock),
+    #[cfg(test)]
     ManualClock(ManualClock),
 }
 
@@ -61,10 +65,12 @@ impl StateClock {
     pub fn now(&self) -> OffsetDateTime {
         match self {
             StateClock::DefaultClock(clock) => clock.now(),
+            #[cfg(test)]
             StateClock::ManualClock(clock) => clock.now(),
         }
     }
 
+    #[cfg(test)]
     pub fn set_now(&mut self, new_time: OffsetDateTime) {
         if let StateClock::ManualClock(clock) = self {
             clock.set_now(new_time);
