@@ -16,7 +16,7 @@ use log::LevelFilter;
 use logforth::append::rolling_file::NonBlockingBuilder;
 use logforth::append::rolling_file::RollingFile;
 use logforth::append::rolling_file::RollingFileWriter;
-use logforth::append::rolling_file::Rotation;
+use logforth::append::rolling_file::TimeRotation;
 use logforth::append::Stdout;
 use logforth::layout::JsonLayout;
 use logforth::layout::TextLayout;
@@ -25,7 +25,7 @@ use logforth::Logger;
 
 fn main() {
     let rolling = RollingFileWriter::builder()
-        .rotation(Rotation::Minutely)
+        .rotation(TimeRotation::Minutely)
         .filename_prefix("example")
         .filename_suffix("log")
         .max_log_files(10)

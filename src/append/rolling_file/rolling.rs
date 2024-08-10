@@ -20,13 +20,12 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
+use crate::append::rolling_file::TimeRotation;
 use anyhow::Context;
 use parking_lot::RwLock;
 use time::format_description;
 use time::Date;
-use time::Duration;
 use time::OffsetDateTime;
-use time::Time;
 
 /// A file writer with the ability to rotate log files at a fixed schedule.
 #[derive(Debug)]
@@ -73,7 +72,7 @@ impl Write for RollingFileWriter {
 /// A builder for [`RollingFileWriter`].
 #[derive(Debug)]
 pub struct RollingFileWriterBuilder {
-    rotation: Rotation,
+    rotation: TimeRotation,
     prefix: Option<String>,
     suffix: Option<String>,
     max_size: usize,
@@ -90,7 +89,7 @@ impl RollingFileWriterBuilder {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            rotation: Rotation::Never,
+            rotation: TimeRotation::Never,
             prefix: None,
             suffix: None,
             max_size: usize::MAX,
@@ -99,7 +98,7 @@ impl RollingFileWriterBuilder {
     }
 
     #[must_use]
-    pub fn rotation(mut self, rotation: Rotation) -> Self {
+    pub fn rotation(mut self, rotation: TimeRotation) -> Self {
         self.rotation = rotation;
         self
     }
@@ -162,7 +161,7 @@ struct State {
     log_filename_prefix: Option<String>,
     log_filename_suffix: Option<String>,
     date_format: Vec<format_description::FormatItem<'static>>,
-    rotation: Rotation,
+    rotation: TimeRotation,
     current_date: OffsetDateTime,
     current_count: usize,
     current_filesize: usize,
@@ -174,7 +173,7 @@ struct State {
 impl State {
     fn new(
         now: OffsetDateTime,
-        rotation: Rotation,
+        rotation: TimeRotation,
         dir: impl AsRef<Path>,
         log_filename_prefix: Option<String>,
         log_filename_suffix: Option<String>,
@@ -218,11 +217,11 @@ impl State {
             &self.log_filename_prefix,
             &self.log_filename_suffix,
         ) {
-            (&Rotation::Never, Some(filename), None) => format!("{filename}.{cnt}"),
-            (&Rotation::Never, Some(filename), Some(suffix)) => {
+            (&TimeRotation::Never, Some(filename), None) => format!("{filename}.{cnt}"),
+            (&TimeRotation::Never, Some(filename), Some(suffix)) => {
                 format!("{filename}.{cnt}.{suffix}")
             }
-            (&Rotation::Never, None, Some(suffix)) => format!("{cnt}.{suffix}"),
+            (&TimeRotation::Never, None, Some(suffix)) => format!("{cnt}.{suffix}"),
             (_, Some(filename), Some(suffix)) => format!("{filename}.{date}.{cnt}.{suffix}"),
             (_, Some(filename), None) => format!("{filename}.{date}.{cnt}"),
             (_, None, Some(suffix)) => format!("{date}.{cnt}.{suffix}"),
@@ -336,62 +335,5 @@ impl State {
         self.current_count = 0;
         self.current_filesize = 0;
         self.next_date_timestamp = self.rotation.next_date_timestamp(&now);
-    }
-}
-
-/// Defines a fixed period for rolling of a log file.
-#[derive(Clone, Eq, PartialEq, Debug)]
-pub enum Rotation {
-    /// Minutely Rotation
-    Minutely,
-    /// Hourly Rotation
-    Hourly,
-    /// Daily Rotation
-    Daily,
-    /// No Rotation
-    Never,
-}
-
-impl Rotation {
-    fn next_date_timestamp(&self, current_date: &OffsetDateTime) -> Option<usize> {
-        let next_date = match *self {
-            Rotation::Minutely => *current_date + Duration::minutes(1),
-            Rotation::Hourly => *current_date + Duration::hours(1),
-            Rotation::Daily => *current_date + Duration::days(1),
-            Rotation::Never => return None,
-        };
-
-        Some(self.round_date(&next_date).unix_timestamp() as usize)
-    }
-
-    fn round_date(&self, date: &OffsetDateTime) -> OffsetDateTime {
-        match *self {
-            Rotation::Minutely => {
-                let time = Time::from_hms(date.hour(), date.minute(), 0)
-                    .expect("invalid time; this is a bug in logforth rolling file appender");
-                date.replace_time(time)
-            }
-            Rotation::Hourly => {
-                let time = Time::from_hms(date.hour(), 0, 0)
-                    .expect("invalid time; this is a bug in logforth rolling file appender");
-                date.replace_time(time)
-            }
-            Rotation::Daily => {
-                let time = Time::from_hms(0, 0, 0)
-                    .expect("invalid time; this is a bug in logforth rolling file appender");
-                date.replace_time(time)
-            }
-            Rotation::Never => unreachable!("Rotation::Never is impossible to round."),
-        }
-    }
-
-    fn date_format(&self) -> Vec<format_description::FormatItem<'static>> {
-        match *self {
-            Rotation::Minutely => format_description::parse("[year]-[month]-[day]-[hour]-[minute]"),
-            Rotation::Hourly => format_description::parse("[year]-[month]-[day]-[hour]"),
-            Rotation::Daily => format_description::parse("[year]-[month]-[day]"),
-            Rotation::Never => format_description::parse("[year]-[month]-[day]"),
-        }
-        .expect("failed to create a formatter; this is a bug in logforth rolling file appender")
     }
 }
