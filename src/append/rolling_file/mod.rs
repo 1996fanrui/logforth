@@ -21,6 +21,7 @@ pub use rolling::RollingFileWriterBuilder;
 pub use rotation::TimeRotation;
 
 mod append;
+mod clock;
 mod non_blocking;
 mod rolling;
 mod rotation;

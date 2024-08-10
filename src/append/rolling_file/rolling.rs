@@ -20,6 +20,7 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
+use crate::append::rolling_file::clock::{Clock, DefaultClock};
 use crate::append::rolling_file::TimeRotation;
 use anyhow::Context;
 use parking_lot::RwLock;
@@ -39,15 +40,11 @@ impl RollingFileWriter {
     pub fn builder() -> RollingFileWriterBuilder {
         RollingFileWriterBuilder::new()
     }
-
-    fn now(&self) -> OffsetDateTime {
-        OffsetDateTime::now_utc()
-    }
 }
 
 impl Write for RollingFileWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let now = self.now();
+        let now = self.state.clock.now();
         let writer = self.writer.get_mut();
         if self.state.should_rollover_on_date(now) {
             self.state.advance_date(now);
@@ -77,6 +74,7 @@ pub struct RollingFileWriterBuilder {
     suffix: Option<String>,
     max_size: usize,
     max_files: Option<usize>,
+    clock: Option<Box<dyn Clock>>,
 }
 
 impl Default for RollingFileWriterBuilder {
@@ -94,6 +92,7 @@ impl RollingFileWriterBuilder {
             suffix: None,
             max_size: usize::MAX,
             max_files: None,
+            clock: None,
         }
     }
 
@@ -138,6 +137,11 @@ impl RollingFileWriterBuilder {
         self
     }
 
+    fn clock(mut self, clock: Box<dyn Clock>) -> Self {
+        self.clock = Some(clock);
+        self
+    }
+
     pub fn build(self, dir: impl AsRef<Path>) -> anyhow::Result<RollingFileWriter> {
         let Self {
             rotation,
@@ -145,11 +149,17 @@ impl RollingFileWriterBuilder {
             suffix,
             max_size,
             max_files,
+            clock,
         } = self;
         let directory = dir.as_ref().to_path_buf();
-        let now = OffsetDateTime::now_utc();
         let (state, writer) = State::new(
-            now, rotation, directory, prefix, suffix, max_size, max_files,
+            rotation,
+            directory,
+            prefix,
+            suffix,
+            max_size,
+            max_files,
+            clock.unwrap_or_else(|| Box::new(DefaultClock)),
         )?;
         Ok(RollingFileWriter { state, writer })
     }
@@ -162,29 +172,29 @@ struct State {
     log_filename_suffix: Option<String>,
     date_format: Vec<format_description::FormatItem<'static>>,
     rotation: TimeRotation,
-    current_date: OffsetDateTime,
     current_count: usize,
     current_filesize: usize,
     next_date_timestamp: Option<usize>,
     max_size: usize,
     max_files: Option<usize>,
+    clock: Box<dyn Clock>,
 }
 
 impl State {
     fn new(
-        now: OffsetDateTime,
         rotation: TimeRotation,
         dir: impl AsRef<Path>,
         log_filename_prefix: Option<String>,
         log_filename_suffix: Option<String>,
         max_size: usize,
         max_files: Option<usize>,
+        clock: Box<dyn Clock>,
     ) -> anyhow::Result<(Self, RwLock<File>)> {
         let log_dir = dir.as_ref().to_path_buf();
         let date_format = rotation.date_format();
+        let now = clock.now();
         let next_date_timestamp = rotation.next_date_timestamp(&now);
 
-        let current_date = now;
         let current_count = 0;
         let current_filesize = 0;
 
@@ -193,13 +203,13 @@ impl State {
             log_filename_prefix,
             log_filename_suffix,
             date_format,
-            current_date,
             current_count,
             current_filesize,
             next_date_timestamp,
             rotation,
             max_size,
             max_files,
+            clock,
         };
 
         let file = state.create_log_writer(now, 0)?;
@@ -331,9 +341,63 @@ impl State {
     }
 
     fn advance_date(&mut self, now: OffsetDateTime) {
-        self.current_date = now;
         self.current_count = 0;
         self.current_filesize = 0;
         self.next_date_timestamp = self.rotation.next_date_timestamp(&now);
+    }
+}
+#[cfg(test)]
+mod tests {
+    use crate::append::rolling_file::{RollingFileWriterBuilder, TimeRotation};
+    use rand::{distributions::Alphanumeric, Rng};
+    use std::cmp::min;
+    use std::fs;
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_builder() {
+        let temp_dir = TempDir::new().expect("failed to create a temporary directory");
+        let max_files = 10;
+        let max_size = 1000000;
+
+        let mut writer = RollingFileWriterBuilder::new()
+            .rotation(TimeRotation::Never)
+            .filename_prefix("test_prefix")
+            .filename_suffix("log")
+            .max_log_files(max_files)
+            .max_file_size(max_size)
+            .build(&temp_dir)
+            .unwrap();
+
+        for i in 1..=(max_files * 2) {
+            let mut expected_file_size = 0;
+            while expected_file_size < max_size {
+                let rand_str = generate_random_string();
+                expected_file_size += rand_str.len();
+                assert_eq!(writer.write(rand_str.as_bytes()).unwrap(), rand_str.len());
+                assert_eq!(writer.state.current_filesize, expected_file_size);
+            }
+
+            writer.flush().unwrap();
+            assert_eq!(
+                fs::read_dir(&writer.state.log_dir).unwrap().count(),
+                min(i, max_files)
+            );
+        }
+
+        assert_eq!(fs::read_dir(&writer.state.log_dir).unwrap().count(), 10);
+    }
+
+    fn generate_random_string() -> String {
+        let mut rng = rand::thread_rng();
+        let len = rng.gen_range(1..=100);
+        let random_string: String = std::iter::repeat(())
+            .map(|()| rng.sample(Alphanumeric))
+            .map(char::from)
+            .take(len)
+            .collect();
+
+        random_string
     }
 }
