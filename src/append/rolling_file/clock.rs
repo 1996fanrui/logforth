@@ -42,8 +42,33 @@ impl Clock for ManualClock {
 }
 
 impl ManualClock {
+    pub fn new(fixed_time: OffsetDateTime) -> ManualClock {
+        ManualClock { fixed_time }
+    }
+
     pub fn set_now(&mut self, new_time: OffsetDateTime) {
         self.fixed_time = new_time;
+    }
+}
+
+#[derive(Debug)]
+pub enum StateClock {
+    DefaultClock(DefaultClock),
+    ManualClock(ManualClock),
+}
+
+impl StateClock {
+    pub fn now(&self) -> OffsetDateTime {
+        match self {
+            StateClock::DefaultClock(clock) => clock.now(),
+            StateClock::ManualClock(clock) => clock.now(),
+        }
+    }
+
+    pub fn set_now(&mut self, new_time: OffsetDateTime) {
+        if let StateClock::ManualClock(clock) = self {
+            clock.set_now(new_time);
+        }
     }
 }
 
