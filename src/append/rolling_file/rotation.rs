@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use chrono::TimeZone;
 use time::format_description;
 use time::Duration;
 use time::OffsetDateTime;
@@ -31,6 +32,8 @@ pub enum Rotation {
 }
 
 impl Rotation {
+    pub fn xxx(&self, zone: impl TimeZone) {}
+
     pub fn next_date_timestamp(&self, current_date: &OffsetDateTime) -> Option<usize> {
         let next_date = match *self {
             Rotation::Minutely => *current_date + Duration::minutes(1),

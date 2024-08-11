@@ -51,6 +51,7 @@ log = { version = "0.4", features = ["std", "kv_unstable"] }
 paste = { version = "1.0" }
 serde = { version = "1.0", features = ["derive"], optional = true }
 serde_json = { version = "1.0", optional = true }
+chrono = {version = "0.4"}
 
 [dev-dependencies]
 rand = "0.8.5"

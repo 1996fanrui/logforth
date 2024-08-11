@@ -12,8 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use chrono::FixedOffset;
 use log::LevelFilter;
 use logforth::append;
+use logforth::layout::LevelColor;
 use logforth::layout::TextLayout;
 use logforth::Dispatch;
 use logforth::Logger;
@@ -23,7 +25,10 @@ fn main() {
         .dispatch(
             Dispatch::new()
                 .filter(LevelFilter::Trace)
-                .layout(TextLayout::default())
+                .layout(TextLayout {
+                    colors: LevelColor::default(),
+                    time_zone: FixedOffset::east_opt(7 * (3600)),
+                })
                 .append(append::Stdout),
         )
         .apply()
